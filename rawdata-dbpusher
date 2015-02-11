@@ -64,6 +64,7 @@ def _usage():
     """ % sys.argv[0]
 
 def errorToCode(error):
+
     if 'valid' in error:
         return 0
     elif 'trash' in error:
@@ -124,6 +125,9 @@ def main(argv):
     # Determine FastCal key file path
     FastCalKeyFile = "%s/camera/%s/fastcal/calibration.key" % (__MountPoint__, __CameraMAC__)
 
+    # Determine camera info key file path
+    CameraInfoKeyFile = "%s/camera/camera.info" % (__MountPoint__)
+
     # Scope variables initialisation
     __Segments__   = []
 
@@ -149,15 +153,21 @@ def main(argv):
         # Instanciate FastCal ConfigParser
         fastcal_config = ConfigParser.RawConfigParser()
 
+        # Instanciate camera info ConfigParser
+        camera_info_config = ConfigParser.RawConfigParser()
+
         # Read database config file and prepend a fake [section] to comply with ConfigParser
         db_config.readfp(StringIO('[connection]\n' + open(DatabaseConfigFile, 'r').read()))
 
         # Read FastCal calibration file and prepend a fake [section] to comply with ConfigParser
         fastcal_config.readfp(StringIO('[calibration]\n' + open(FastCalKeyFile, 'r').read()))
 
+        # Read camera info file and prepend a fake [section] to comply with ConfigParser
+        camera_info_config.readfp(StringIO('[info]\n' + open(CameraInfoKeyFile, 'r').read()))
+
         # Read hardware informations from FastCal key file
-        _cam_model = fastcal_config.get('calibration', 'type')
-        _cam_name  = fastcal_config.get('calibration', 'model')
+        _cam_type = fastcal_config.get('calibration', 'type')
+        _cam_model  = fastcal_config.get('calibration', 'model')
         _cam_id    = None
 
         # Try to etablish connection with the database
@@ -178,32 +188,66 @@ def main(argv):
         # Check if camera exists
         if not data_cam:
 
-            # Test hardware
-            cur.execute("SELECT id FROM hardware WHERE model LIKE '%s'" % (_cam_model))
+            # Test camera model
+            cur.execute("SELECT id FROM camera_model WHERE model LIKE '%s'" % (_cam_model))
 
             # fetch all of the rows from the query
-            data_hardware = cur.fetchone()
+            data_camera_model = cur.fetchone()
 
-            # Local variable
-            _hardware_id = None
+            # Local variables
+            _camera_model_id = None
+            _camera_type_id = None
 
-            # Check if camera hardware exists
-            if not data_hardware:
+            # Check if camera model exists
+            if not data_camera_model:
 
-                # Insert new hardware
-                cur.execute("INSERT INTO hardware (model, name) VALUES ('%s', '%s')" % (_cam_model, _cam_name))
-                _hardware_id = cur.lastrowid
+                # Test camera type
+                cur.execute("SELECT id FROM camera_type WHERE type LIKE '%s'" % (_cam_type))
+
+                # fetch all of the rows from the query
+                data_camera_type = cur.fetchone()
+
+                # Check if camera model exists
+                if not data_camera_type:
+
+                    # Insert new type
+                    cur.execute("INSERT INTO camera_type (type, name) VALUES ('%s', '%s')" % (_cam_type, camera_info_config.get('info', _cam_model)))
+                    _camera_type_id = cur.lastrowid
+
+                else:
+
+                    # Always update camera type name
+                    cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_model))
+
+                    # Get camera type id
+                    _camera_type_id = data_camera_type[ 0 ]
+
+                # Insert new model
+                cur.execute("INSERT INTO camera_model (type_id, model, name) VALUES ('%d', '%s', '%s')" % (_camera_type_id, _cam_model, camera_info_config.get('info', _cam_type) ))
+                _camera_model_id = cur.lastrowid
 
             else:
-                _hardware_id = data_hardware[ 0 ]
+
+                # Always update camera model name
+                cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_type))
+
+                # Get camera model id
+                _camera_model_id = data_camera_model[ 0 ]
 
 
             # Insert camera
-            cur.execute("INSERT INTO camera (hardware_id, mac) VALUES (%d, '%s')" % (_hardware_id, __CameraMAC__))
+            cur.execute("INSERT INTO camera (model_id, mac) VALUES (%d, '%s')" % (_camera_model_id, __CameraMAC__))
             _cam_id = cur.lastrowid
 
         else:
 
+            # Always update camera model name
+            cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_type))
+
+            # Always update camera type name
+            cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_model))
+
+            # Get camera id
             _cam_id = data_cam[ 0 ]
 
         # Commit changes to database
@@ -219,6 +263,10 @@ def main(argv):
 
             # Load JSON data
             json_data = json.load(SourceJSON)
+
+            # Parse JSON flags
+            _split_flag = (1 if json_data[ 'split' ] else 0)
+            _preview_flag = previewToCode( json_data[ 'preview' ] )
 
             # Test segment
             cur.execute("SELECT id FROM segment WHERE camera_id=%d AND timestamp_master='%s' AND timestamp_segment='%s'" % (_cam_id, __MasterTimestamp__, Segment))
@@ -246,7 +294,7 @@ def main(argv):
                             print("Updating split flag...")
 
                             # Update split flag on database
-                            cur.execute("UPDATE segment SET flag_split=%d WHERE id=%d" % ((1 if json_data[ 'split' ] else 0), data_segment[ 0 ]))
+                            cur.execute("UPDATE segment SET flag_split=%d WHERE id=%d" % (_split_flag, data_segment[ 0 ]))
 
                         elif __Update_Preview_Flag__:
 
@@ -254,7 +302,7 @@ def main(argv):
                             print("Updating preview flag...")
 
                             # Update preview flag on database
-                            cur.execute("UPDATE segment SET flag_preview=%d WHERE id=%d" % (previewToCode( json_data[ 'preview' ] ), data_segment[ 0 ]))
+                            cur.execute("UPDATE segment SET flag_preview=%d WHERE id=%d" % (_preview_flag, data_segment[ 0 ]))
 
                         # Commit changes to database
                         DB.commit()
@@ -271,7 +319,7 @@ def main(argv):
                 print( "Pushing segment %s..." % Segment )
 
                 # Insert segment
-                cur.execute("INSERT INTO segment (camera_id, timestamp_master, timestamp_segment, flag_split, flag_preview) VALUES (%d, '%s', '%s', FALSE, 0)" % (_cam_id, __MasterTimestamp__, Segment))
+                cur.execute("INSERT INTO segment (camera_id, timestamp_master, timestamp_segment, flag_split, flag_preview) VALUES (%d, '%s', '%s', %d, %d)" % (_cam_id, __MasterTimestamp__, Segment, _split_flag, _preview_flag))
 
                 # Get inserted segment id
                 _segment_id = cur.lastrowid
