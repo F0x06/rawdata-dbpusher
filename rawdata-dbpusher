@@ -211,25 +211,25 @@ def main(argv):
                 if not data_camera_type:
 
                     # Insert new type
-                    cur.execute("INSERT INTO camera_type (type, name) VALUES ('%s', '%s')" % (_cam_type, camera_info_config.get('info', _cam_model)))
+                    cur.execute("INSERT INTO camera_type (type, name) VALUES ('%s', '%s')" % (_cam_type, camera_info_config.get('info', _cam_type)))
                     _camera_type_id = cur.lastrowid
 
                 else:
 
                     # Always update camera type name
-                    cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_model))
+                    cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_type))
 
                     # Get camera type id
                     _camera_type_id = data_camera_type[ 0 ]
 
                 # Insert new model
-                cur.execute("INSERT INTO camera_model (type_id, model, name) VALUES ('%d', '%s', '%s')" % (_camera_type_id, _cam_model, camera_info_config.get('info', _cam_type) ))
+                cur.execute("INSERT INTO camera_model (type_id, model, name) VALUES ('%d', '%s', '%s')" % (_camera_type_id, _cam_model, camera_info_config.get('info', _cam_model) ))
                 _camera_model_id = cur.lastrowid
 
             else:
 
                 # Always update camera model name
-                cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_type))
+                cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_model))
 
                 # Get camera model id
                 _camera_model_id = data_camera_model[ 0 ]
@@ -242,10 +242,10 @@ def main(argv):
         else:
 
             # Always update camera model name
-            cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_type))
+            cur.execute("UPDATE camera_model SET name='%s'" % camera_info_config.get('info', _cam_model))
 
             # Always update camera type name
-            cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_model))
+            cur.execute("UPDATE camera_type SET name='%s'" % camera_info_config.get('info', _cam_type))
 
             # Get camera id
             _cam_id = data_cam[ 0 ]
