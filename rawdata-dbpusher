@@ -45,6 +45,7 @@ import sys
 import json
 import os
 
+from warnings import filterwarnings
 from cStringIO import StringIO
 import MySQLdb
 
@@ -54,17 +55,21 @@ def _usage():
     Usage: %s [OPTIONS]
 
     [Required arguments]
-    --mount-point        Base mount directory
-    --mac-address        Camera MAC address
-    --master-timestamp   Master timestamp
+    --mount-point         Base mount directory
+    --mac-address         Camera MAC address
+    --master-timestamp    Master timestamp
 
     [Optional arguments]
-    --segment-timestamp  Segment timestamp
+    --segment-timestamp   Segment timestamp
+    --update-split-flag   Update split flag in DB
+    --update-preview-flag Update preview flag in DB
 
     """ % sys.argv[0]
 
+# Function to convert a raw status message to error code
 def errorToCode(error):
 
+    # Return proper code
     if 'valid' in error:
         return 0
     elif 'trash' in error:
@@ -72,10 +77,13 @@ def errorToCode(error):
     elif 'corrupt' in error:
         return 2
 
+# Function to convert a preview status message to error code
 def previewToCode(state):
 
+    # Check if state is assigned
     if state:
 
+        # Return proper code
         if 'debayer' in state:
             return 1
         elif 'no-debayer' in state:
@@ -83,6 +91,7 @@ def previewToCode(state):
 
     else:
 
+        # Return proper code
         return 0
 
 # Program entry point function
@@ -113,8 +122,16 @@ def main(argv):
     __CameraMAC__           = (None if not 'mac-address' in Arguments else Arguments['mac-address'])
     __MasterTimestamp__     = (None if not 'master-timestamp' in Arguments else Arguments['master-timestamp'])
     __SegmentTimestamp__    = (None if not 'segment-timestamp' in Arguments else Arguments['segment-timestamp'])
-    __Update_Split_Flag__   = (None if not 'update-split-flag' in Arguments else True)
-    __Update_Preview_Flag__ = (None if not 'update-preview-flag' in Arguments else True)
+    __Update_Split_Flag__   = (False if not 'update-split-flag' in Arguments else True)
+    __Update_Preview_Flag__ = (False if not 'update-preview-flag' in Arguments else True)
+
+    # Arguments check
+    if not __MountPoint__ or not __CameraMAC__ or not __MasterTimestamp__:
+        _usage()
+        sys.exit(0)
+
+    # Disable MySQLdb warning messages
+    filterwarnings('ignore', category = MySQLdb.Warning)
 
     # Determine base segments folder
     BaseSegmentsFolder = "%s/rawdata/%s/master/%s/segment" % (__MountPoint__, __CameraMAC__, __MasterTimestamp__)
